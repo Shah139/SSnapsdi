@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:snapsdi/controllers/comment_controller.dart';
 import '../controllers/post_controller.dart';
+import '../controllers/profile_controller.dart';
 import '../models/post.dart';
 import '../views/comment_page.dart';
+import '../views/profile_page.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
   final PostController postController = Get.find();
   final CommentController commentController = Get.put(CommentController());
+  final ProfileController profileController = Get.put(ProfileController());
   final RxBool isLiked = false.obs;
   final RxInt likesCount = 0.obs;
 
@@ -42,20 +45,41 @@ class PostCard extends StatelessWidget {
             padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: Colors.grey[400],
-                  child: Icon(Icons.person, color: Colors.white),
-                ),
-                SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "User",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
+                Obx(() => Row(
+  children: [
+    GestureDetector(
+      onTap: () => Get.to(() => ProfilePage()),
+      child: profileController.profile['profile_picture'] != null && 
+             profileController.profile['profile_picture'].toString().isNotEmpty
+        ? CircleAvatar(
+            backgroundImage: NetworkImage(
+              profileController.profile['profile_picture'],
+            ),
+            radius: 20,
+          )
+        : CircleAvatar(
+            backgroundColor: Colors.grey[400],
+            child: Icon(Icons.person, color: Colors.white),
+            radius: 20,
+          ),
+    ),
+    SizedBox(width: 4),
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextButton(
+          onPressed: () {
+            Get.to(() => ProfilePage());
+          },
+          child: Text(
+            profileController.profile['name'] ?? "user",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+          ),
+        ),
+      ],
+    ),
+  ],
+))
               ],
             ),
           ),
@@ -86,7 +110,7 @@ class PostCard extends StatelessWidget {
                   children: [
                     Obx(() => Text("${likesCount.value} Likes", style: TextStyle(color: Colors.grey[700]))),
                     SizedBox(width: 16),
-                    Obx(() =>Text("${post.comments.length} Comments", style: TextStyle(color: Colors.grey[700]))),
+                   // Text("${post.comments.length} Comments", style: TextStyle(color: Colors.grey[700])),
                   ],
                 ),
               ],
