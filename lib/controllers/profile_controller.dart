@@ -41,7 +41,6 @@ class ProfileController extends GetxController {
       isLoading.value = false;
     }
   }
-
   Future<void> fetchUserPosts(String userId) async {
     isLoading.value = true;
     try {
@@ -84,6 +83,43 @@ class ProfileController extends GetxController {
       isLoading.value = false;
     }
   }
+
+  Future<void> toggleFollow(String userId) async {
+  final user = _supabase.auth.currentUser;
+  if (user == null) return;
+
+  final existingFollow = await _supabase
+      .from('follows')
+      .select()
+      .eq('follower_id', user.id)
+      .eq('following_id', userId)
+      .maybeSingle();
+
+  if (existingFollow == null) {
+    await _supabase.from('follows').insert({
+      'follower_id': user.id,
+      'following_id': userId,
+    });
+  } else {
+    await _supabase.from('follows').delete().eq('id', existingFollow['id']);
+  }
+}
+
+Future<bool> isFollowing(String userId) async {
+  final user = _supabase.auth.currentUser;
+  if (user == null) return false;
+
+  final response = await _supabase
+      .from('follows')
+      .select()
+      .eq('follower_id', user.id)
+      .eq('following_id', userId)
+      .maybeSingle();
+
+  return response != null;
+}
+
+
 
   Future<void> updateProfile(String name, String bio, String imageUrl) async {
     final user = _supabase.auth.currentUser;

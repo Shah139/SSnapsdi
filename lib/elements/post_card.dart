@@ -6,17 +6,24 @@ import '../controllers/profile_controller.dart';
 import '../models/post.dart';
 import '../views/comment_page.dart';
 import '../views/profile_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../views/user_profile_page.dart';
+
 
 class PostCard extends StatelessWidget {
   final Post post;
   final PostController postController = Get.find();
   final CommentController commentController = Get.put(CommentController());
-  final ProfileController profileController = Get.put(ProfileController());
   final RxBool isLiked = false.obs;
   final RxInt likesCount = 0.obs;
+  // Store post author data
+  final Rx<Map<String, dynamic>> postAuthor = Rx<Map<String, dynamic>>({});
+  
+  final isLoadingAuthor = true.obs;
 
   PostCard({required this.post}) {
     _fetchLikesCount();
+    _fetchPostAuthor();
   }
 
   Future<void> _fetchLikesCount() async {
@@ -25,9 +32,34 @@ class PostCard extends StatelessWidget {
     isLiked.value = await postController.isPostLiked(post.id);
   }
 
+  Future<void> _fetchPostAuthor() async {
+    isLoadingAuthor.value = true;
+    try {
+      // Fetch the profile of the post author
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', post.userId)
+          .single();
+      
+      postAuthor.value = response;
+    } catch (e) {
+      print('Error fetching post author: $e');
+      // Set defaults if we can't fetch the author
+      postAuthor.value = {
+        'name': 'User',
+        'profile_picture': '',
+        'id': post.userId
+      };
+    } finally {
+      isLoadingAuthor.value = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     double width = MediaQuery.of(context).size.width;
+    final currentUser = Supabase.instance.client.auth.currentUser;
 
     return Container(
       margin: EdgeInsets.only(bottom: 8),
@@ -45,41 +77,60 @@ class PostCard extends StatelessWidget {
             padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
-                Obx(() => Row(
-  children: [
-    GestureDetector(
-      onTap: () => Get.to(() => ProfilePage()),
-      child: profileController.profile['profile_picture'] != null && 
-             profileController.profile['profile_picture'].toString().isNotEmpty
-        ? CircleAvatar(
-            backgroundImage: NetworkImage(
-              profileController.profile['profile_picture'],
-            ),
-            radius: 20,
-          )
-        : CircleAvatar(
-            backgroundColor: Colors.grey[400],
-            child: Icon(Icons.person, color: Colors.white),
-            radius: 20,
-          ),
-    ),
-    SizedBox(width: 4),
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextButton(
-          onPressed: () {
-            Get.to(() => ProfilePage());
-          },
-          child: Text(
-            profileController.profile['name'] ?? "user",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-          ),
-        ),
-      ],
-    ),
-  ],
-))
+                Obx(() => isLoadingAuthor.value
+                  ? CircularProgressIndicator()
+                  : Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          // Navigate to the appropriate profile page
+                          if (currentUser != null && postAuthor.value['id'] == currentUser.id) {
+                            // It's the current user's post, go to their profile
+                            Get.to(() => ProfilePage());
+                          } else {
+                            // It's another user's post, go to their profile
+                            Get.to(() => UserProfilePage(userId: postAuthor.value['id']));
+                          }
+                        },
+                        child: postAuthor.value['profile_picture'] != null && 
+                              postAuthor.value['profile_picture'].toString().isNotEmpty
+                          ? CircleAvatar(
+                              backgroundImage: NetworkImage(
+                                postAuthor.value['profile_picture'],
+                              ),
+                              radius: 20,
+                            )
+                          : CircleAvatar(
+                              backgroundColor: Colors.grey[400],
+                              child: Icon(Icons.person, color: Colors.white),
+                              radius: 20,
+                            ),
+                      ),
+                      SizedBox(width: 4),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              // Navigate to the appropriate profile page
+                              if (currentUser != null && postAuthor.value['id'] == currentUser.id) {
+                                // It's the current user's post, go to their profile
+                                Get.to(() => ProfilePage());
+                              } else {
+                                // It's another user's post, go to their profile
+                                Get.to(() => UserProfilePage(userId: postAuthor.value['id']));
+                              }
+                            },
+                            child: Text(
+                              postAuthor.value['name'] ?? "User",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  )
+                )
               ],
             ),
           ),

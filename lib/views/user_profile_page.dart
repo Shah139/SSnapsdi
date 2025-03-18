@@ -1,39 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../controllers/profile_controller.dart';
 import '../models/post.dart';
-import '../views/login_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class UserProfilePage extends StatefulWidget {
+  final String userId;
+  
+  const UserProfilePage({Key? key, required this.userId}) : super(key: key);
+
+  @override
+  _UserProfilePageState createState() => _UserProfilePageState();
+}
+
+class _UserProfilePageState extends State<UserProfilePage> {
   final ProfileController profileController = Get.put(ProfileController());
+  final RxBool isLoading = true.obs;
+  final Rx<Map<String, dynamic>> userData = Rx<Map<String, dynamic>>({});
+  final RxList<Post> userPosts = <Post>[].obs;
+  final RxBool isFollowing = false.obs;
+  
+  @override
+  void initState() {
+    super.initState();
+    loadUserData();
+  }
+  
+  Future<void> loadUserData() async {
+    isLoading.value = true;
+    try {
+      // Fetch user profile
+      final profileResponse = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', widget.userId)
+          .single();
+      
+      userData.value = profileResponse;
+      
+      // Fetch user posts
+      final postsResponse = await Supabase.instance.client
+          .from('posts')
+          .select('*, likes(id), comments(id)')
+          .eq('user_id', widget.userId)
+          .order('created_at', ascending: false);
+      
+      userPosts.assignAll(postsResponse.map<Post>((p) => Post.fromJson(p)).toList());
+      
+      // Check if current user is following this profile
+      isFollowing.value = await profileController.isFollowing(widget.userId);
+      
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to load user data: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text("Profile"),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.edit),
-            onPressed: () => _showEditProfileDialog(context),
-          ),
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () {
-              // Implement logout functionality here
-              // Supabase.instance.client.auth.signOut();
-               Get.offAll(() => LoginPage());
-            },
-          ),
-        ],
       ),
       body: Obx(() {
-        if (profileController.isLoading.value) {
+        if (isLoading.value) {
           return Center(child: CircularProgressIndicator());
         }
         
         return RefreshIndicator(
-          onRefresh: () => profileController.loadUserData(),
+          onRefresh: () => loadUserData(),
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
@@ -44,22 +80,29 @@ class ProfilePage extends StatelessWidget {
                     children: [
                       CircleAvatar(
                         backgroundImage: NetworkImage(
-                          profileController.profile['profile_picture'] ?? 
+                          userData.value['profile_picture'] ?? 
                           "https://via.placeholder.com/150"),
                         radius: 50,
                       ),
                       SizedBox(height: 16),
                       Text(
-                        profileController.profile['name'] ?? "No Name",
+                        userData.value['name'] ?? "No Name",
                         style: TextStyle(
                           fontSize: 24, 
                           fontWeight: FontWeight.bold
                         ),
                       ),
-                      SizedBox(height: 5),
-
+                      SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          await profileController.toggleFollow(widget.userId);
+                          isFollowing.value = await profileController.isFollowing(widget.userId);
+                        },
+                        child: Obx(() => Text(isFollowing.value ? "Unfollow" : "Follow")),
+                      ),
+                      SizedBox(height: 8),
                       Text(
-                        profileController.profile['bio'] ?? "No Bio",
+                        userData.value['bio'] ?? "No Bio",
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 16),
                       ),
@@ -67,8 +110,7 @@ class ProfilePage extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildStatColumn(profileController.userPosts.length.toString(), "Posts"),
-                          
+                          _buildStatColumn(userPosts.length.toString(), "Posts"),
                         ],
                       ),
                       SizedBox(height: 16),
@@ -78,7 +120,7 @@ class ProfilePage extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Text(
-                            "My Posts",
+                            "Posts",
                             style: TextStyle(
                               fontSize: 18, 
                               fontWeight: FontWeight.bold
@@ -92,7 +134,7 @@ class ProfilePage extends StatelessWidget {
               ),
               
               // Grid of user posts
-              profileController.userPosts.isEmpty ?
+              userPosts.isEmpty ?
               SliverToBoxAdapter(
                 child: Center(
                   child: Padding(
@@ -112,7 +154,7 @@ class ProfilePage extends StatelessWidget {
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final Post post = profileController.userPosts[index];
+                    final Post post = userPosts[index];
                     return GestureDetector(
                       onTap: () => _showPostDetail(context, post),
                       child: Hero(
@@ -128,7 +170,7 @@ class ProfilePage extends StatelessWidget {
                       ),
                     );
                   },
-                  childCount: profileController.userPosts.length,
+                  childCount: userPosts.length,
                 ),
               ),
             ],
@@ -158,85 +200,13 @@ class ProfilePage extends StatelessWidget {
       ],
     );
   }
-void _showEditProfileDialog(BuildContext context) {
-  final nameController = TextEditingController(
-    text: profileController.profile['name']?.toString() ?? ''
-  );
-  final bioController = TextEditingController(
-    text: profileController.profile['bio']?.toString() ?? ''
-  );
-  
-  // Create an RxString correctly
-  final profileImageUrl = RxString(profileController.profile['profile_picture']?.toString() ?? '');
-
-  Get.dialog(
-    AlertDialog(
-      title: Text('Edit Profile'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Obx(() => CircleAvatar(
-              radius: 40,
-              backgroundImage: profileImageUrl.value.isNotEmpty
-                  ? NetworkImage(profileImageUrl.value)
-                  : null,
-              child: profileImageUrl.value.isEmpty
-                  ? Icon(Icons.person, size: 40)
-                  : null,
-            )),
-            SizedBox(height: 16),
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(labelText: 'Name'),
-            ),
-            TextField(
-              controller: bioController,
-              decoration: InputDecoration(labelText: 'Bio'),
-              maxLines: 3,
-            ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              child: Text('Update Profile Picture'),
-              onPressed: () async {
-                // Call the new upload method and update the local URL if successful
-                final newImageUrl = await profileController.uploadProfileImage();
-                if (newImageUrl != null) {
-                  profileImageUrl.value = newImageUrl;
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          child: Text('Cancel'),
-          onPressed: () => Get.back(),
-        ),
-        TextButton(
-          child: Text('Save'),
-          onPressed: () {
-            profileController.updateProfile(
-              nameController.text,
-              bioController.text,
-              profileImageUrl.value,
-            );
-            Get.back();
-          },
-        ),
-      ],
-    ),
-  );
-}
-  
 
   void _showPostDetail(BuildContext context, Post post) {
     Get.to(() => PostDetailPage(post: post));
   }
 }
 
-// You'll need to create this page or use an existing one
+// Make sure this class exists in your project
 class PostDetailPage extends StatelessWidget {
   final Post post;
   
@@ -251,18 +221,13 @@ class PostDetailPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Hero(
-  tag: 'post-${post.id}',
-  child: SizedBox(
-    width: double.infinity, // Makes it flexible
-    child: AspectRatio(
-      aspectRatio: 1, // Forces square shape
-      child: Image.network(
-        post.imageUrl,
-        fit: BoxFit.cover,
-      ),
-    ),
-  ),
-),
+              tag: 'post-${post.id}',
+              child: Image.network(
+                post.imageUrl,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(

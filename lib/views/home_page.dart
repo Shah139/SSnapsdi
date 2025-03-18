@@ -34,8 +34,8 @@ class HomePage extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: Colors.grey[400],
-                    child: Icon(Icons.person, color: Colors.white),
+                    backgroundColor: Colors.green[400],
+                    child: Icon(Icons.travel_explore_outlined, color: Colors.white),
                   ),
                   SizedBox(width: 12),
                   Text(
