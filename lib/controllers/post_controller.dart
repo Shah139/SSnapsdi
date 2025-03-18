@@ -15,8 +15,16 @@ class PostController extends GetxController {
     fetchPosts();
 
     _supabase.from('posts').stream(primaryKey: ['id']).listen((List<Map<String, dynamic>> event) {
+      // Sort by created_at in descending order (newest first)
+      event.sort((a, b) => DateTime.parse(b['created_at']).compareTo(DateTime.parse(a['created_at'])));
       posts.value = event.map((post) => Post.fromJson(post)).toList();
     });
+  }
+
+  // Function to refresh posts
+  Future<void> refreshPosts() async {
+    await fetchPosts();
+
   }
 
   Future<void> fetchPosts() async {
@@ -24,7 +32,7 @@ class PostController extends GetxController {
       final response = await _supabase
           .from('posts')
           .select('*, likes(id), comments(id)')
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false);  // Explicitly order by created_at descending
 
       posts.assignAll(response.map<Post>((p) => Post.fromJson(p)).toList());
     } catch (e) {
@@ -71,7 +79,8 @@ class PostController extends GetxController {
       }).select().maybeSingle();
 
       if (response != null) {
-        posts.insert(0, Post.fromJson(response));
+        posts.insert(0, Post.fromJson(response));  // Insert at the beginning of the list
+        await fetchPosts();  // Refresh the posts to ensure correct order
       }
     } catch (e) {
       Get.snackbar("Error", "Failed to add post: $e");
@@ -85,7 +94,6 @@ class PostController extends GetxController {
         .eq('post_id', postId);
     return response.length;
   }
-
 
   Future<void> likePost(String postId) async {
     final user = _supabase.auth.currentUser;
@@ -119,32 +127,25 @@ class PostController extends GetxController {
     return existingLike != null;
   }
 
-//all the comment functions
-
+  //all the comment functions
   Future<void> addComment(String postId, String content) async {
-  final user = _supabase.auth.currentUser;
-  if (user != null && content.trim().isNotEmpty) {
-    await _supabase.from('comments').insert({
-      'post_id': postId,
-      'user_id': user.id,
-      'content': content,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+    final user = _supabase.auth.currentUser;
+    if (user != null && content.trim().isNotEmpty) {
+      await _supabase.from('comments').insert({
+        'post_id': postId,
+        'user_id': user.id,
+        'content': content,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    }
   }
-}
 
-Future<List<Map<String, dynamic>>> fetchComments(String postId) async {
-  final response = await _supabase
-      .from('comments')
-      .select('*')
-      .eq('post_id', postId)
-      .order('created_at', ascending: true);
-  return response;
-}
-
-
-
-
-
-
+  Future<List<Map<String, dynamic>>> fetchComments(String postId) async {
+    final response = await _supabase
+        .from('comments')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', ascending: true);
+    return response;
+  }
 }
